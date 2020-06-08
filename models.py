@@ -39,7 +39,7 @@ class UnivariateTSModel:
             plt.plot(self.fcst.index, self.fcst.values)
 
         plt.title('Monthly vs Fitted Sales')
-        plt.legend(['Sales', 'Forecast']);
+        plt.legend(['Sales', 'Forecast'])
     
     def acf_plot(self):
         '''
@@ -56,7 +56,7 @@ class UnivariateTSModel:
         plt.ylim(-1,1)
         plt.bar(lag, acf, width=0.3, alpha=0.6)
         plt.fill_between(lag, cutoff, -cutoff, alpha=0.4, color='skyblue')
-        plt.title('ACF Plot');
+        plt.title('ACF Plot')
 
 
 class BrownExpSmoothing(UnivariateTSModel):
