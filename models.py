@@ -9,6 +9,8 @@ import warnings
 
 class UnivariateTSModel:
     def __init__(self, data):
+        assert isinstance(data, pd.core.series.Series),\
+            'Please use pandas Series as input'
         self.data = data
         self.rmse = None
         self.fitted = False
@@ -17,7 +19,7 @@ class UnivariateTSModel:
 
     def fit(self):
         pass
-    
+
     def predict(self, extend):
         pass
 
@@ -29,7 +31,7 @@ class UnivariateTSModel:
         ======
         predict: bool, whether to plot prediction (fit) or forecast
         '''
-        plt.figure(figsize=(10,5))
+        plt.figure(figsize=(10, 5))
         plt.plot(self.data.index, self.data.values)
         if predict:
             plt.plot(self.predict.index, self.predict.values)
@@ -40,20 +42,20 @@ class UnivariateTSModel:
 
         plt.title('Monthly vs Fitted Sales')
         plt.legend(['Sales', 'Forecast'])
-    
+
     def acf_plot(self):
         '''
         Get plot of ACF given data
         '''
         n = len(self.data)
         lag = np.array([i for i in range(1, self.period)])
-        acf = np.array([np.corrcoef(self.data[:-i], self.data[i:])[0,1]
+        acf = np.array([np.corrcoef(self.data[:-i], self.data[i:])[0, 1]
                         for i in lag])
         # Cutoffs
         cutoff = 2/np.sqrt(n-lag)
 
-        plt.figure(figsize=(7,4))
-        plt.ylim(-1,1)
+        plt.figure(figsize=(7, 4))
+        plt.ylim(-1, 1)
         plt.bar(lag, acf, width=0.3, alpha=0.6)
         plt.fill_between(lag, cutoff, -cutoff, alpha=0.4, color='skyblue')
         plt.title('ACF Plot')
@@ -63,8 +65,10 @@ class BrownExpSmoothing(UnivariateTSModel):
     '''
     Seasonal-adjusted Brown Exponential Smoothing
     '''
-    def __init__(self, data, period=12):
+    def __init__(self, data, period):
         super(BrownExpSmoothing, self).__init__(data)
+        assert isinstance(period, int), 'Period should be a positive integer'
+        assert period > 0, 'Period should be a positive integer'
         self.adjusted_data = None
         self.alpha = None
         self.seasonal = True
@@ -116,7 +120,6 @@ class BrownExpSmoothing(UnivariateTSModel):
 
         return f, e, d
 
-
     @staticmethod
     def get_seasonal_index(data, period):
         '''
@@ -152,7 +155,6 @@ class BrownExpSmoothing(UnivariateTSModel):
                                  int(len(ratio)/period)+1)[:len(ratio)]
         return seasonal_index
 
-
     @staticmethod
     def get_optimized_alpha(data, period, init=0.5):
         '''
@@ -168,10 +170,13 @@ class BrownExpSmoothing(UnivariateTSModel):
         alpha: float, optimized alpha
         rmse: float, optimized RMSE
         '''
+        assert init > 0, 'Init should be more than 0'
+        assert init < 1, 'Init should be less than 1'
         seasonal_index = BrownExpSmoothing.get_seasonal_index(data, period)
         # Adjust data by seasonal index
         adjusted_data = data.values/seasonal_index
         # Define function to minimize
+
         def func(alpha):
             f, e, _ = BrownExpSmoothing.get_les_forecast(adjusted_data, alpha)
 
@@ -186,8 +191,7 @@ class BrownExpSmoothing(UnivariateTSModel):
         alpha = op.x[0]
         rmse = op.fun
         return alpha, rmse
-    
-    
+
     def fit(self):
         seasonal_index = self.__class__.get_seasonal_index(self.data,
                                                            self.period)
@@ -200,19 +204,17 @@ class BrownExpSmoothing(UnivariateTSModel):
         f, e, _ = self.__class__.get_les_forecast(self.adjusted_data,
                                                   self.alpha)
         les_forecast = f
-        les_error = e
 
         # Reseasonalize
         self.predict = pd.Series(les_forecast.values*seasonal_index,
                                  index=self.data.index)
         self.fitted = True
 
-
     def forecast(self, extend=12):
         if self.fitted:
             seasonal_index = self.__class__.get_seasonal_index(self.data,
                                                                self.period)
-            # Forecast the next 15 months
+            # Forecast the next 12 months
             f, _, _ = self.__class__.get_les_forecast(self.adjusted_data,
                                                       self.alpha,
                                                       extend=extend)
@@ -234,11 +236,12 @@ class STLDecomp(UnivariateTSModel):
     '''
     def __init__(self, data, period=12):
         super(STLDecomp, self).__init__(data)
+        assert isinstance(period, int), 'Period should be a positive integer'
+        assert period > 0, 'Period should be a positive integer'
         self.seasonal = True
         self.period = period
         self.stl = None
         self.r2 = None
-
 
     @staticmethod
     def ls_regression(data, line=True):
@@ -266,7 +269,6 @@ class STLDecomp(UnivariateTSModel):
             return pd.Series(m*x+b, name='LSReg')
         return m, b
 
-
     @staticmethod
     def extend_forecast(trend, extend=0):
         '''
@@ -286,7 +288,6 @@ class STLDecomp(UnivariateTSModel):
         x = np.array([i for i in range(n+extend)])
         return m*x+b
 
-
     def check_r2(self):
         '''
         Check whether R2 is below 0.95 and warn the user
@@ -302,7 +303,6 @@ class STLDecomp(UnivariateTSModel):
         if self.r2 < 0.95:
             warnings.warn("R2 is below 0.95, prediction accuracy may be bad.")
 
-
     def fit(self, extrapolate=1):
         stl = seasonal_decompose(self.data.values, period=self.period,
                                  extrapolate_trend=extrapolate)
@@ -310,8 +310,7 @@ class STLDecomp(UnivariateTSModel):
         self.stl = stl
         self.fitted = True
         self.predict = pd.Series(stl.trend+stl.seasonal, index=self.data.index)
-        self.rmse = np.sqrt(np.mean(stl.resid**2))
-
+        self.rmse = rmse
 
     def forecast(self, extend=12):
         if self.fitted:
@@ -334,12 +333,13 @@ class HoltWinters(UnivariateTSModel):
     '''
     Holt-Winters exponential smoothing without seasonal smoothing
     '''
-    def __init__(self, data, period=12):
+    def __init__(self, data, period):
         super(HoltWinters, self).__init__(data)
+        assert isinstance(period, int), 'Period should be a positive integer'
+        assert period > 0, 'Period should be a positive integer'
         self.seasonal = True
         self.period = period
         self.model = None
-
 
     def fit(self, extrapolate=1):
         self.model = ExponentialSmoothing(
@@ -356,12 +356,12 @@ class HoltWinters(UnivariateTSModel):
                                  index=self.data.index)
         self.rmse = np.sqrt(np.mean((self.data-self.predict)**2))
 
-
     def forecast(self, extend=12):
         if self.fitted:
             dates = pd.date_range(self.data.index.min(),
                                   periods=len(self.data)+extend, freq='M')
-            self.fcst = pd.Series(self.model.predict(0, len(self.data)+extend-1),
+            self.fcst = pd.Series(self.model.predict(0,
+                                  len(self.data)+extend-1),
                                   index=dates)
         else:
             raise Exception("Run fit method first!")
